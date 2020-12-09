@@ -173,18 +173,18 @@ def main_worker(gpu, ngpus_per_node, argss):
         scheduler.step()
         epoch_log = epoch + 1
         if main_process():
-            writer.add_scalar('loss_train', loss_train, epoch_log)
-            writer.add_scalar('mIoU_train', mIoU_train, epoch_log)
-            writer.add_scalar('mAcc_train', mAcc_train, epoch_log)
-            writer.add_scalar('allAcc_train', allAcc_train, epoch_log)
-            writer.add_scalar('top1_train', top1_train, epoch_log)
-            writer.add_scalar('top5_train', top5_train, epoch_log)
-            writer.add_scalar('loss_val', loss_val, epoch_log)
-            writer.add_scalar('mIoU_val', mIoU_val, epoch_log)
-            writer.add_scalar('mAcc_val', mAcc_val, epoch_log)
-            writer.add_scalar('allAcc_val', allAcc_val, epoch_log)
-            writer.add_scalar('top1_val', top1_val, epoch_log)
-            writer.add_scalar('top5_val', top5_val, epoch_log)
+            writer.add_scalar('train_epoch/loss', loss_train, epoch_log)
+            writer.add_scalar('train_epoch/mIoU', mIoU_train, epoch_log)
+            writer.add_scalar('train_epoch/mAcc', mAcc_train, epoch_log)
+            writer.add_scalar('train_epoch/allAcc', allAcc_train, epoch_log)
+            writer.add_scalar('train_epoch/top1', top1_train, epoch_log)
+            writer.add_scalar('train_epoch/top5', top5_train, epoch_log)
+            writer.add_scalar('val/loss', loss_val, epoch_log)
+            writer.add_scalar('val/mIoU', mIoU_val, epoch_log)
+            writer.add_scalar('val/mAcc', mAcc_val, epoch_log)
+            writer.add_scalar('val/allAcc', allAcc_val, epoch_log)
+            writer.add_scalar('val/top1', top1_val, epoch_log)
+            writer.add_scalar('val/top5', top5_val, epoch_log)
 
         if (epoch_log % args.save_freq == 0) and main_process():
             filename = args.save_path + '/train_epoch_' + str(epoch_log) + '.pth'
@@ -274,12 +274,12 @@ def train(train_loader, model, criterion, optimizer, epoch):
                                                                         top1=top1_meter,
                                                                         top5=top5_meter))
         if main_process():
-            writer.add_scalar('loss_train_batch', loss_meter.val, current_iter)
-            writer.add_scalar('mIoU_train_batch', np.mean(intersection / (union + 1e-10)), current_iter)
-            writer.add_scalar('mAcc_train_batch', np.mean(intersection / (target + 1e-10)), current_iter)
-            writer.add_scalar('allAcc_train_batch', accuracy, current_iter)
-            writer.add_scalar('top1_train_batch', top1, current_iter)
-            writer.add_scalar('top5_train_batch', top5, current_iter)
+            writer.add_scalar('train/loss', loss_meter.val, current_iter)
+            writer.add_scalar('train/mIoU', np.mean(intersection / (union + 1e-10)), current_iter)
+            writer.add_scalar('train/mAcc', np.mean(intersection / (target + 1e-10)), current_iter)
+            writer.add_scalar('train/allAcc', accuracy, current_iter)
+            writer.add_scalar('train/top1', top1, current_iter)
+            writer.add_scalar('train/top5', top5, current_iter)
 
     iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
     accuracy_class = intersection_meter.sum / (target_meter.sum + 1e-10)
