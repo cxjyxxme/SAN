@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import global_args
 
 from lib.sa.modules import Subtraction, Subtraction2, Aggregation
 
@@ -22,16 +23,26 @@ def position(H, W, is_cuda=True):
 class SAM(nn.Module):
     def __init__(self, sa_type, in_planes, rel_planes, out_planes, share_planes, kernel_size=3, stride=1, dilation=1):
         super(SAM, self).__init__()
+        self.args = global_args.get_args()
+        self.ws = out_planes // share_planes
         self.sa_type, self.kernel_size, self.stride = sa_type, kernel_size, stride
         self.conv1 = nn.Conv2d(in_planes, rel_planes, kernel_size=1)
         self.conv2 = nn.Conv2d(in_planes, rel_planes, kernel_size=1)
         self.conv3 = nn.Conv2d(in_planes, out_planes, kernel_size=1)
+        if (self.args.use_position2):
+            ch = share_planes + kernel_size * kernel_size
+            self.conv_pos2 = nn.Conv2d((ch) * (out_planes // share_planes), out_planes, kernel_size=1, groups=out_planes // share_planes, bias=False)
+
         if sa_type == 0:
-            self.conv_w = nn.Sequential(nn.BatchNorm2d(rel_planes + 2), nn.ReLU(inplace=True),
-                                        nn.Conv2d(rel_planes + 2, rel_planes, kernel_size=1, bias=False),
+            if (self.args.use_position):
+                self.conv_p = nn.Conv2d(2, 2, kernel_size=1)
+                ch = rel_planes + 2
+            else:
+                ch = rel_planes
+            self.conv_w = nn.Sequential(nn.BatchNorm2d(ch), nn.ReLU(inplace=True),
+                                        nn.Conv2d(ch, rel_planes, kernel_size=1, bias=False),
                                         nn.BatchNorm2d(rel_planes), nn.ReLU(inplace=True),
                                         nn.Conv2d(rel_planes, out_planes // share_planes, kernel_size=1))
-            self.conv_p = nn.Conv2d(2, 2, kernel_size=1)
             self.subtraction = Subtraction(kernel_size, stride, (dilation * (kernel_size - 1) + 1) // 2, dilation, pad_mode=1)
             self.subtraction2 = Subtraction2(kernel_size, stride, (dilation * (kernel_size - 1) + 1) // 2, dilation, pad_mode=1)
             self.softmax = nn.Softmax(dim=-2)
@@ -48,8 +59,11 @@ class SAM(nn.Module):
     def forward(self, x):
         x1, x2, x3 = self.conv1(x), self.conv2(x), self.conv3(x)
         if self.sa_type == 0:  # pairwise
-            p = self.conv_p(position(x.shape[2], x.shape[3], x.is_cuda))
-            w = self.softmax(self.conv_w(torch.cat([self.subtraction2(x1, x2), self.subtraction(p).repeat(x.shape[0], 1, 1, 1)], 1)))
+            if (self.args.use_position):
+                p = self.conv_p(position(x.shape[2], x.shape[3], x.is_cuda))
+                w = self.softmax(self.conv_w(torch.cat([self.subtraction2(x1, x2), self.subtraction(p).repeat(x.shape[0], 1, 1, 1)], 1)))
+            else:
+                w = self.softmax(self.conv_w(self.subtraction2(x1, x2)))
         else:  # patchwise
             if self.stride != 1:
                 x1 = self.unfold_i(x1)
@@ -57,6 +71,10 @@ class SAM(nn.Module):
             x2 = self.unfold_j(self.pad(x2)).view(x.shape[0], -1, 1, x1.shape[-1])
             w = self.conv_w(torch.cat([x1, x2], 1)).view(x.shape[0], -1, pow(self.kernel_size, 2), x1.shape[-1])
         x = self.aggregation(x3, w)
+        if (self.args.use_position2):
+            x = x.view(x.shape[0], x.shape[1] // w.shape[1], w.shape[1], x.shape[2], x.shape[3]).permute([0,2,1,3,4])
+            x = torch.cat([x, w.view(w.shape[0], w.shape[1], w.shape[2], x.shape[3], x.shape[4])], 2).view(x.shape[0], -1, x.shape[3], x.shape[4])
+            x = self.conv_pos2(x)
         return x
 
 
@@ -82,6 +100,7 @@ class Bottleneck(nn.Module):
 class SAN(nn.Module):
     def __init__(self, sa_type, block, layers, kernels, num_classes):
         super(SAN, self).__init__()
+        self.args = global_args.get_args()
         c = 64
         self.conv_in, self.bn_in = conv1x1(3, c), nn.BatchNorm2d(c)
         self.conv0, self.bn0 = conv1x1(c, c), nn.BatchNorm2d(c)

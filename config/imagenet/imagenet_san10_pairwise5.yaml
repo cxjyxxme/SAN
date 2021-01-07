@@ -5,16 +5,16 @@ DATA:
 
 TRAIN:
   arch: san
-  sa_type: 1
+  sa_type: 0
   layers: [2, 1, 2, 4, 1]
   kernels: [3, 7, 7, 7, 7]
   ignore_label: 2000
   train_gpu: [0]
-  workers: 32  # data loader workers
-  batch_size: 32  # batch size for training
-  batch_size_val: 32  # batch size for validation during training, memory and speed tradeoff
-  base_lr: 0.1
-  epochs: 100
+  workers: 8  # data loader workers
+  batch_size: 16  # batch size for training
+  batch_size_val: 16  # batch size for validation during training, memory and speed tradeoff
+  base_lr: 0.02
+  epochs: 200
   start_epoch: 0
   step_epochs: [30, 60, 90]
   label_smoothing: 0.1
@@ -25,7 +25,7 @@ TRAIN:
   manual_seed:
   print_freq: 10
   save_freq: 1
-  save_path: exp/imagenet/san10_patchwise/model
+  save_path: exp/imagenet/san10_pairwise5/model
   weight:  # path to initial weight (default: none)
   resume:  # path to latest checkpoint (default: none)
   evaluate: True  # evaluate on validation set, extra gpu memory needed and small batch_size_val is recommend
@@ -40,4 +40,4 @@ TEST:
   test_gpu: [0]
   test_workers: 10
   batch_size_test: 100
-  model_path: exp/imagenet/san10_patchwise/model/model_best.pth
+  model_path: exp/imagenet/san10_pairwise5/model/model_best.pth

@@ -1,3 +1,5 @@
+import global_args
+global_args._init()
 import os
 import random
 import time
@@ -61,6 +63,7 @@ def main_process():
 
 def main():
     args = get_parser()
+    global_args.set_args(args)
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(str(x) for x in args.train_gpu)
     if args.manual_seed is not None:
         random.seed(args.manual_seed)
