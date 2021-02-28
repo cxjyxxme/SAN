@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import global_args
+import math
 
 from lib.sa.modules import Subtraction, Subtraction2, Aggregation
 
@@ -33,6 +34,7 @@ class SAM(nn.Module):
             ch = share_planes + kernel_size * kernel_size
             self.conv_pos2 = nn.Conv2d((ch) * (out_planes // share_planes), out_planes, kernel_size=1, groups=out_planes // share_planes, bias=False)
 
+        self.relu = nn.ReLU(inplace=True)
         if sa_type == 0:
             if (self.args.use_position):
                 self.conv_p = nn.Conv2d(2, 2, kernel_size=1)
@@ -57,9 +59,9 @@ class SAM(nn.Module):
         self.aggregation = Aggregation(kernel_size, stride, (dilation * (kernel_size - 1) + 1) // 2, dilation, pad_mode=1)
 
     def forward(self, x):
-        if (self.args.tcn_add_random and self.training):
-            rand = jt.random(x.shape, jt.float32, "normal") * self.args.tcn_add_random_size
-            x_ = (x + rand) / math.sqrt(1 + self.args.tcn_add_random_size * self.args.tcn_add_random_size)
+        if (self.args.add_random and self.training):
+            rand = torch.randn(x.shape, device=x.device) * self.args.add_random_size
+            x_ = (x + rand) / math.sqrt(1 + self.args.add_random_size * self.args.add_random_size)
             x_ = self.relu(x_)
             x1 = self.conv1(x_)   #[bs, k_ch, h, w]
             x2 = self.conv2(x_)
@@ -91,6 +93,7 @@ class SAM(nn.Module):
 class Bottleneck(nn.Module):
     def __init__(self, sa_type, in_planes, rel_planes, mid_planes, out_planes, share_planes=8, kernel_size=7, stride=1):
         super(Bottleneck, self).__init__()
+        self.args = global_args.get_args()
         self.bn1 = nn.BatchNorm2d(in_planes)
         self.sam = SAM(sa_type, in_planes, rel_planes, mid_planes, share_planes, kernel_size, stride)
         self.bn2 = nn.BatchNorm2d(mid_planes)
