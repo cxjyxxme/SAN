@@ -1,3 +1,5 @@
+import global_args
+global_args._init()
 import os
 import random
 import time
@@ -52,6 +54,7 @@ def get_logger():
 def main():
     global args, logger
     args = get_parser()
+    global_args.set_args(args)
     logger = get_logger()
     logger.info(args)
     logger.info("=> creating model ...")
