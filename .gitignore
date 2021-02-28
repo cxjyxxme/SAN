@@ -72,3 +72,4 @@ dataset/
 *.ninja_log
 *.ninja
 slurm*
+temp/
