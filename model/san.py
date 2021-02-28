@@ -57,7 +57,17 @@ class SAM(nn.Module):
         self.aggregation = Aggregation(kernel_size, stride, (dilation * (kernel_size - 1) + 1) // 2, dilation, pad_mode=1)
 
     def forward(self, x):
-        x1, x2, x3 = self.conv1(x), self.conv2(x), self.conv3(x)
+        if (self.args.tcn_add_random and self.training):
+            rand = jt.random(x.shape, jt.float32, "normal") * self.args.tcn_add_random_size
+            x_ = (x + rand) / math.sqrt(1 + self.args.tcn_add_random_size * self.args.tcn_add_random_size)
+            x_ = self.relu(x_)
+            x1 = self.conv1(x_)   #[bs, k_ch, h, w]
+            x2 = self.conv2(x_)
+            x = self.relu(x)
+            x3 = self.conv3(x)
+        else:
+            x1, x2, x3 = self.conv1(x), self.conv2(x), self.conv3(x)
+
         if self.sa_type == 0:  # pairwise
             if (self.args.use_position):
                 p = self.conv_p(position(x.shape[2], x.shape[3], x.is_cuda))
@@ -90,7 +100,10 @@ class Bottleneck(nn.Module):
 
     def forward(self, x):
         identity = x
-        out = self.relu(self.bn1(x))
+        if (self.args.add_random and self.training):
+            out = self.bn1(x)
+        else:
+            out = self.relu(self.bn1(x))
         out = self.relu(self.bn2(self.sam(out)))
         out = self.conv(out)
         out += identity

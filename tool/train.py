@@ -93,6 +93,7 @@ def main():
 def main_worker(gpu, ngpus_per_node, argss):
     global args, best_acc1
     args, best_acc1 = argss, 0
+    global_args.set_args(args)
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
@@ -201,6 +202,10 @@ def main_worker(gpu, ngpus_per_node, argss):
                 deletename = args.save_path + '/train_epoch_' + str(epoch_log - args.save_freq * 2) + '.pth'
                 os.remove(deletename)
 
+def get_parameter_number(net):
+    total_num = sum(p.numel() for p in net.parameters())
+    trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    return {'Total': total_num / 1000 / 1000, 'Trainable': trainable_num / 1000 / 1000}
 
 def train(train_loader, model, criterion, optimizer, epoch):
     batch_time = AverageMeter()
@@ -213,6 +218,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
     top5_meter = AverageMeter()
 
     model.train()
+    # print(get_parameter_number(model))
+    # exit(0)
     end = time.time()
     max_iter = args.epochs * len(train_loader)
     for i, (input, target) in enumerate(train_loader):

@@ -8,7 +8,7 @@
 export PYTHONPATH=./
 # eval "$(conda shell.bash hook)"
 # conda activate pt140  # pytorch 1.4.0 env
-PYTHON=python3.7
+PYTHON=python3.8
 
 dataset=$1
 exp_name=$2
