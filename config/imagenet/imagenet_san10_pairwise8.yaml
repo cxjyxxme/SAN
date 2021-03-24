@@ -31,6 +31,10 @@ TRAIN:
   evaluate: True  # evaluate on validation set, extra gpu memory needed and small batch_size_val is recommend
   use_position: True
   use_position2: False
+  add_random: False
+  add_random_size: 0.02
+  use_resnet: False
+  use_mask: False
 Distributed:
   dist_url: tcp://127.0.0.1:6789
   dist_backend: 'nccl'

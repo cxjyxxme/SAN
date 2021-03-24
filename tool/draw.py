@@ -1,3 +1,5 @@
+import global_args
+global_args._init()
 import os
 import random
 import time
@@ -52,6 +54,7 @@ def get_logger():
 def main():
     global args, logger
     args = get_parser()
+    global_args.set_args(args)
     logger = get_logger()
     logger.info(args)
     logger.info("=> creating model ...")
@@ -142,6 +145,7 @@ def draw(imgs, ws, path):
 
 import math
 def validate(val_loader, model):
+    id = args.save_path.split('/')[-2][len("san10_pairwise"):]
     model.eval()
     for i, (input, target) in enumerate(val_loader):
         input = input.cuda(non_blocking=True)
@@ -151,13 +155,13 @@ def validate(val_loader, model):
             output = model(input)
             #[bs, share, pp, h*w]
             w = model.module.layer4[0].sam.weight
-            w = model.module.layer3[3].sam.weight
-            # w = model.module.layer3[0].sam.weight
+            # w = model.module.layer3[3].sam.weight
+            w = model.module.layer3[0].sam.weight
             
             w = w.permute([0,3,1,2])
             bs, hw, ks, pp = w.shape
             w = w.reshape([bs, int(math.sqrt(hw)), int(math.sqrt(hw)), ks, 7, 7])
-            draw(input, w, 'output_images/out.jpg')
+            draw(input, w, 'output_images/out' +str(id) +'.jpg')
 
 if __name__ == '__main__':
     main()

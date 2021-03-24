@@ -73,3 +73,7 @@ dataset/
 *.ninja
 slurm*
 temp/
+imagenet_rot_test/
+rot_dataset/
+DCNv2/
+input_images/

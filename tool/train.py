@@ -22,7 +22,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from tensorboardX import SummaryWriter
 
-from model.san import san
+from model.san import san, resnet50_san
 from util import config
 from util.util import AverageMeter, intersectionAndUnionGPU, find_free_port, mixup_data, mixup_loss, smooth_loss, cal_accuracy
 
@@ -101,7 +101,10 @@ def main_worker(gpu, ngpus_per_node, argss):
             args.rank = args.rank * ngpus_per_node + gpu
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
 
-    model = san(args.sa_type, args.layers, args.kernels, args.classes)
+    if (args.use_resnet):
+        model = resnet50_san([False, True, True, True])
+    else:
+        model = san(args.sa_type, args.layers, args.kernels, args.classes)
     criterion = nn.CrossEntropyLoss(ignore_index=args.ignore_label)
     optimizer = torch.optim.SGD(model.parameters(), lr=args.base_lr, momentum=args.momentum, weight_decay=args.weight_decay)
     if args.scheduler == 'step':
@@ -155,7 +158,10 @@ def main_worker(gpu, ngpus_per_node, argss):
                 logger.info("=> no checkpoint found at '{}'".format(args.resume))
 
     mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-    train_transform = transforms.Compose([transforms.RandomResizedCrop(224), transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize(mean, std)])
+    if (args.train_random_rotate):
+        train_transform = transforms.Compose([transforms.RandomRotation(180), transforms.RandomResizedCrop(224), transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize(mean, std)])
+    else:
+        train_transform = transforms.Compose([transforms.RandomResizedCrop(224), transforms.RandomHorizontalFlip(), transforms.ToTensor(), transforms.Normalize(mean, std)])
     train_set = torchvision.datasets.ImageFolder(os.path.join(args.data_root, 'train'), train_transform)
     val_transform = transforms.Compose([transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor(), transforms.Normalize(mean, std)])
     val_set = torchvision.datasets.ImageFolder(os.path.join(args.data_root, 'val'), val_transform)

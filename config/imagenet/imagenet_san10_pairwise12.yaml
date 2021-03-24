@@ -25,14 +25,15 @@ TRAIN:
   manual_seed:
   print_freq: 10
   save_freq: 1
-  save_path: exp/imagenet/san10_pairwise10/model
+  save_path: exp/imagenet/san10_pairwise12/model
   weight:  # path to initial weight (default: none)
-  resume: /mnt/disk/cxjyxx_me/deformable/SAN/exp/imagenet/san10_pairwise10/model/train_epoch_14.pth # path to latest checkpoint (default: none)
+  resume: # path to latest checkpoint (default: none)
   evaluate: True  # evaluate on validation set, extra gpu memory needed and small batch_size_val is recommend
   use_position: False
   use_position2: True
-  add_random: True
+  add_random: False
   add_random_size: 0.02
+  use_resnet: True
 Distributed:
   dist_url: tcp://127.0.0.1:6789
   dist_backend: 'nccl'
@@ -44,4 +45,4 @@ TEST:
   test_gpu: [0]
   test_workers: 10
   batch_size_test: 100
-  model_path: exp/imagenet/san10_pairwise10/model/model_best.pth
+  model_path: exp/imagenet/san10_pairwise12/model/model_best.pth

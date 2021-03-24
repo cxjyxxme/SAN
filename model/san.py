@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import global_args
 import math
-
+import torchvision
 from lib.sa.modules import Subtraction, Subtraction2, Aggregation
-
+# from DCNv2.dcn_v2 import DCN
 
 def conv1x1(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
@@ -45,6 +45,9 @@ class SAM(nn.Module):
                                         nn.Conv2d(ch, rel_planes, kernel_size=1, bias=False),
                                         nn.BatchNorm2d(rel_planes), nn.ReLU(inplace=True),
                                         nn.Conv2d(rel_planes, out_planes // share_planes, kernel_size=1))
+            self.hn = out_planes // share_planes
+            if (self.args.use_mask):
+                self.conv_mask = nn.Conv2d(in_planes, out_planes // share_planes, kernel_size=1, stride=stride)
             self.subtraction = Subtraction(kernel_size, stride, (dilation * (kernel_size - 1) + 1) // 2, dilation, pad_mode=1)
             self.subtraction2 = Subtraction2(kernel_size, stride, (dilation * (kernel_size - 1) + 1) // 2, dilation, pad_mode=1)
             self.softmax = nn.Softmax(dim=-2)
@@ -57,8 +60,10 @@ class SAM(nn.Module):
             self.unfold_j = nn.Unfold(kernel_size=kernel_size, dilation=dilation, padding=0, stride=stride)
             self.pad = nn.ReflectionPad2d(kernel_size // 2)
         self.aggregation = Aggregation(kernel_size, stride, (dilation * (kernel_size - 1) + 1) // 2, dilation, pad_mode=1)
+        self.weight = None
 
     def forward(self, x):
+        bs, c, h, w = x.shape
         if (self.args.add_random and self.training):
             rand = torch.randn(x.shape, device=x.device) * self.args.add_random_size
             x_ = (x + rand) / math.sqrt(1 + self.args.add_random_size * self.args.add_random_size)
@@ -76,12 +81,16 @@ class SAM(nn.Module):
                 w = self.softmax(self.conv_w(torch.cat([self.subtraction2(x1, x2), self.subtraction(p).repeat(x.shape[0], 1, 1, 1)], 1)))
             else:
                 w = self.softmax(self.conv_w(self.subtraction2(x1, x2)))
+            if (self.args.use_mask):
+                mask = torch.sigmoid(self.conv_mask(x)).reshape([bs, self.hn, 1, -1])
+                w = w * mask
         else:  # patchwise
             if self.stride != 1:
                 x1 = self.unfold_i(x1)
             x1 = x1.view(x.shape[0], -1, 1, x.shape[2]*x.shape[3])
             x2 = self.unfold_j(self.pad(x2)).view(x.shape[0], -1, 1, x1.shape[-1])
             w = self.conv_w(torch.cat([x1, x2], 1)).view(x.shape[0], -1, pow(self.kernel_size, 2), x1.shape[-1])
+        self.weight = w
         x = self.aggregation(x3, w)
         if (self.args.use_position2):
             x = x.view(x.shape[0], x.shape[1] // w.shape[1], w.shape[1], x.shape[2], x.shape[3]).permute([0,2,1,3,4])
@@ -167,6 +176,32 @@ def san(sa_type, layers, kernels, num_classes):
     model = SAN(sa_type, Bottleneck, layers, kernels, num_classes)
     return model
 
+def get_sam(planes, stride):
+    return SAM(sa_type=0, in_planes=planes, rel_planes=planes//16, out_planes=planes, share_planes=8, kernel_size=7, stride=stride, dilation=1)
+
+def resnet50_san(use_sam_stages):
+    args = global_args.get_args()
+    if (args.resnet_type == '50'):
+        model = torchvision.models.resnet50(pretrained=False)
+    elif (args.resnet_type == '101'):
+        model = torchvision.models.resnet101(pretrained=False)
+    
+    for i in range(4):
+        if not use_sam_stages[i]:
+            continue
+        layer = getattr(model, 'layer'+str(i+1))
+        for j in range(len(layer)):
+            if (args.use_dcn):
+                layer[j].conv2 = DCN(
+                    in_channels=layer[j].conv2.in_channels,
+                    out_channels=layer[j].conv2.in_channels,
+                    kernel_size=3,
+                    stride=layer[j].conv2.stride,
+                    padding=layer[j].conv2.padding,
+                    dilation=1)
+            else:
+                layer[j].conv2 = get_sam(layer[j].conv2.in_channels, layer[j].conv2.stride)
+    return model
 
 if __name__ == '__main__':
     net = san(sa_type=0, layers=(3, 4, 6, 8, 3), kernels=[3, 7, 7, 7, 7], num_classes=1000).cuda().eval()

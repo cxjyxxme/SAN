@@ -18,9 +18,9 @@ result_dir=${exp_dir}/result
 config=config/${dataset}/${dataset}_${exp_name}.yaml
 now=$(date +"%Y%m%d_%H%M%S")
 
-cp tool/draw.sh tool/draw.py ${config} ${exp_dir}
+cp tool/compare.sh tool/compare.py ${config} ${exp_dir}
 
 # export PYTHONPATH=./
-$PYTHON -u ${exp_dir}/draw.py \
+$PYTHON -u ${exp_dir}/compare.py \
   --config=${config} \
-  2>&1 | tee ${result_dir}/draw-$now.log
+  2>&1 | tee ${result_dir}/compare-$now.log
