@@ -22,7 +22,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from tensorboardX import SummaryWriter
 
-from model.san import san, resnet50_san
+from model.san import san, resnet_san
 from util import config
 from util.util import AverageMeter, intersectionAndUnionGPU, find_free_port, mixup_data, mixup_loss, smooth_loss, cal_accuracy
 
@@ -102,9 +102,32 @@ def main_worker(gpu, ngpus_per_node, argss):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
 
     if (args.use_resnet):
-        model = resnet50_san([False, True, True, True])
+        if (args.ori_resnet):
+            model = resnet_san([False, False, False, False])
+        elif (args.last_stage_only):
+            model = resnet_san([False, False, False, True])
+        else:
+            model = resnet_san([False, True, True, True])
     else:
         model = san(args.sa_type, args.layers, args.kernels, args.classes)
+
+
+    # #TODO delete!
+    # from thop import profile, clever_format
+    # from model.san import SAM
+    # def cnt_san(m, x, y):
+    #     pass
+    # input = torch.randn(1, 3, 1024, 1024).cuda()
+    # model = resnet_san([False, False, False, True]).cuda()
+    # macs, params = profile(model, inputs=(input, ))
+    # macs, params = clever_format([macs, params], "%.3f")
+    # print(macs, params)
+    # print('# discriminator parameters:', sum(param.numel() for param in model.parameters()))
+    # exit(0)
+
+
+
+
     criterion = nn.CrossEntropyLoss(ignore_index=args.ignore_label)
     optimizer = torch.optim.SGD(model.parameters(), lr=args.base_lr, momentum=args.momentum, weight_decay=args.weight_decay)
     if args.scheduler == 'step':

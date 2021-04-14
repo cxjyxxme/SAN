@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 import torch.multiprocessing as mp
 import torch.distributed as dist
 
-from model.san import san
+from model.san import san, resnet_san, SAM
 from util import config
 from util.util import AverageMeter, intersectionAndUnionGPU, cal_accuracy
 from skimage import io
@@ -53,9 +53,9 @@ def get_logger():
     return logger
 
 class SAM_(nn.Module):
-    def __init__(self, sa_type, layers, kernels, classes):
+    def __init__(self, m):
         super(SAM_, self).__init__()
-        self.module = san(sa_type, layers, kernels, classes)
+        self.module = m
     
     def forward(self, x):
         return self.module(x)
@@ -133,7 +133,14 @@ def main():
     logger.info("=> creating model ...")
     logger.info("Classes: {}".format(args.classes))
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(str(x) for x in args.test_gpu)
-    model = SAM_(args.sa_type, args.layers, args.kernels, args.classes).cuda()
+    if (args.use_resnet):
+        if (args.last_stage_only):
+            model = resnet_san([False, False, False, True])
+        else:
+            model = resnet_san([False, True, True, True])
+    else:
+        model = san(args.sa_type, args.layers, args.kernels, args.classes)
+    model = SAM_(model).cuda()
     logger.info(model)
     criterion = nn.CrossEntropyLoss(ignore_index=args.ignore_label)
 
@@ -162,7 +169,7 @@ def main():
             distribution[i].append([])
             distribution2[i].append([])
     random.shuffle(datas)
-    test_distribution = True
+    test_distribution = False
     for i in range(len(datas)):
         print(i, '/', len(datas))
         data = datas[i]
@@ -176,9 +183,17 @@ def main():
         _ = model(input)
         ws = []
         cnt_ = 0
-        for layer in [model.module.layer0, model.module.layer1, model.module.layer2, model.module.layer3, model.module.layer4]:
-            for k in range(len(layer)):
-                w = layer[k].sam.weight
+        weights = []
+        if (args.use_resnet):
+            for layer in [model.module.layer1, model.module.layer2, model.module.layer3, model.module.layer4]:
+                for k in range(len(layer)):
+                    if isinstance(layer[k].conv2, SAM):
+                        weights.append(layer[k].conv2.weight)
+        else:
+            for layer in [model.module.layer0, model.module.layer1, model.module.layer2, model.module.layer3, model.module.layer4]:
+                for k in range(len(layer)):
+                    weights.append(layer[k].sam.weight)
+        for w in weights:
                 w = w.permute([0,3,1,2])
                 bs, hw, ks, pp = w.shape
                 w = w.reshape([bs, int(math.sqrt(hw)), int(math.sqrt(hw)), ks, int(math.sqrt(pp)), int(math.sqrt(pp))])
@@ -191,10 +206,12 @@ def main():
                     get_distribution2(distribution2[cnt_], w)
                 cnt_ += 1
         if (not test_distribution):
+            if (len(ws) == 0):
+                continue
             s = get_score(data, ws)
             sum += s
             scores.append(s)
-            print(sum / (i + 1))
+            print(sum / len(scores))
         if (i > 300):
             break
     if (test_distribution):

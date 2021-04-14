@@ -9,7 +9,7 @@ TRAIN:
   layers: [2, 1, 2, 4, 1]
   kernels: [3, 7, 7, 7, 7]
   ignore_label: 2000
-  train_gpu: [0,1,2,3,4,5,6,7]
+  train_gpu: [0]
   workers: 32  # data loader workers
   batch_size: 256  # batch size for training
   batch_size_val: 128  # batch size for validation during training, memory and speed tradeoff
@@ -25,9 +25,9 @@ TRAIN:
   manual_seed:
   print_freq: 10
   save_freq: 1
-  save_path: exp/imagenet/san10_pairwise18/model
+  save_path: exp/imagenet/san10_pairwise19_/model
   weight:  # path to initial weight (default: none)
-  resume: /mnt/disk/cxjyxx_me/deformable/SAN/exp/imagenet/san10_pairwise18/model/train_epoch_81.pth # path to latest checkpoint (default: none)
+  resume: # path to latest checkpoint (default: none)
   evaluate: True  # evaluate on validation set, extra gpu memory needed and small batch_size_val is recommend
   use_position: False
   use_position2: True
@@ -38,7 +38,7 @@ TRAIN:
   use_mask: False
   use_dcn: False
   train_random_rotate: False
-  last_stage_only: False
+  last_stage_only: True
   down_sample_only: False
   ori_resnet: False
 Distributed:
@@ -52,4 +52,4 @@ TEST:
   test_gpu: [0]
   test_workers: 10
   batch_size_test: 100
-  model_path: exp/imagenet/san10_pairwise18/model/model_best.pth
+  model_path: exp/imagenet/san10_pairwise19_/model/model_best.pth

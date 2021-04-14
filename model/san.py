@@ -179,18 +179,21 @@ def san(sa_type, layers, kernels, num_classes):
 def get_sam(planes, stride):
     return SAM(sa_type=0, in_planes=planes, rel_planes=planes//16, out_planes=planes, share_planes=8, kernel_size=7, stride=stride, dilation=1)
 
-def resnet50_san(use_sam_stages):
+def resnet_san(use_sam_stages):
     args = global_args.get_args()
+    assert(not args.add_random)
     if (args.resnet_type == '50'):
         model = torchvision.models.resnet50(pretrained=False)
     elif (args.resnet_type == '101'):
         model = torchvision.models.resnet101(pretrained=False)
-    
+    #TODO FIX RELU before sam
     for i in range(4):
         if not use_sam_stages[i]:
             continue
         layer = getattr(model, 'layer'+str(i+1))
         for j in range(len(layer)):
+            if (args.down_sample_only and j != 0):
+                continue
             if (args.use_dcn):
                 layer[j].conv2 = DCN(
                     in_channels=layer[j].conv2.in_channels,
