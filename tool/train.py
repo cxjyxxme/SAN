@@ -23,8 +23,10 @@ import torch.distributed as dist
 from tensorboardX import SummaryWriter
 
 from model.san import san, resnet_san
+from model.resnet_pytorch import resnet_san_new
 from util import config
 from util.util import AverageMeter, intersectionAndUnionGPU, find_free_port, mixup_data, mixup_loss, smooth_loss, cal_accuracy
+from flops_calculator import analysis_model
 
 cv2.ocl.setUseOpenCL(False)
 cv2.setNumThreads(0)
@@ -102,15 +104,22 @@ def main_worker(gpu, ngpus_per_node, argss):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url, world_size=args.world_size, rank=args.rank)
 
     if (args.use_resnet):
-        if (args.ori_resnet):
-            model = resnet_san([False, False, False, False])
-        elif (args.last_stage_only):
-            model = resnet_san([False, False, False, True])
+        if (args.new_resnet):
+            model = resnet_san_new(args)
         else:
-            model = resnet_san([False, True, True, True])
+            if (args.ori_resnet):
+                model = resnet_san([False, False, False, False])
+            elif (args.last_stage_only):
+                model = resnet_san([False, False, False, True])
+            elif (args.last_two_stage_only):
+                model = resnet_san([False, False, True, True])
+            else:
+                model = resnet_san([False, True, True, True])
     else:
         model = san(args.sa_type, args.layers, args.kernels, args.classes)
-
+    # # test flops
+    # analysis_model(model, [1,3,224,224])
+    # exit(0)
 
     # #TODO delete!
     # from thop import profile, clever_format
@@ -343,62 +352,63 @@ def validate(val_loader, model, criterion):
     top5_meter = AverageMeter()
 
     model.eval()
-    end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        data_time.update(time.time() - end)
-        input = input.cuda(non_blocking=True)
-        target = target.cuda(non_blocking=True)
-        output = model(input)
-        loss = criterion(output, target)
-
-        top1, top5 = cal_accuracy(output, target, topk=(1, 5))
-        n = input.size(0)
-        if args.multiprocessing_distributed:
-            with torch.no_grad():
-                loss, top1, top5 = loss.detach() * n, top1 * n, top5 * n
-                count = target.new_tensor([n], dtype=torch.long)
-                dist.all_reduce(loss), dist.all_reduce(top1), dist.all_reduce(top5), dist.all_reduce(count)
-                n = count.item()
-                loss, top1, top5 = loss / n, top1 / n, top5 / n
-        loss_meter.update(loss.item(), n), top1_meter.update(top1.item(), n), top5_meter.update(top5.item(), n)
-
-        output = output.max(1)[1]
-        intersection, union, target = intersectionAndUnionGPU(output, target, args.classes, args.ignore_label)
-        if args.multiprocessing_distributed:
-            dist.all_reduce(intersection), dist.all_reduce(union), dist.all_reduce(target)
-        intersection, union, target = intersection.cpu().numpy(), union.cpu().numpy(), target.cpu().numpy()
-        intersection_meter.update(intersection), union_meter.update(union), target_meter.update(target)
-        accuracy = sum(intersection_meter.val) / (sum(target_meter.val) + 1e-10)
-        batch_time.update(time.time() - end)
+    with torch.no_grad():
         end = time.time()
+        for i, (input, target) in enumerate(val_loader):
+            data_time.update(time.time() - end)
+            input = input.cuda(non_blocking=True)
+            target = target.cuda(non_blocking=True)
+            output = model(input)
+            loss = criterion(output, target)
 
-        if ((i + 1) % args.print_freq == 0) and main_process():
-            logger.info('Test: [{}/{}] '
-                        'Data {data_time.val:.3f} ({data_time.avg:.3f}) '
-                        'Batch {batch_time.val:.3f} ({batch_time.avg:.3f}) '
-                        'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '
-                        'Accuracy {accuracy:.4f} '
-                        'Acc@1 {top1.val:.3f} ({top1.avg:.3f}) '
-                        'Acc@5 {top5.val:.3f} ({top5.avg:.3f}).'.format(i + 1, len(val_loader),
-                                                                        data_time=data_time,
-                                                                        batch_time=batch_time,
-                                                                        loss_meter=loss_meter,
-                                                                        accuracy=accuracy,
-                                                                        top1=top1_meter,
-                                                                        top5=top5_meter))
+            top1, top5 = cal_accuracy(output, target, topk=(1, 5))
+            n = input.size(0)
+            if args.multiprocessing_distributed:
+                with torch.no_grad():
+                    loss, top1, top5 = loss.detach() * n, top1 * n, top5 * n
+                    count = target.new_tensor([n], dtype=torch.long)
+                    dist.all_reduce(loss), dist.all_reduce(top1), dist.all_reduce(top5), dist.all_reduce(count)
+                    n = count.item()
+                    loss, top1, top5 = loss / n, top1 / n, top5 / n
+            loss_meter.update(loss.item(), n), top1_meter.update(top1.item(), n), top5_meter.update(top5.item(), n)
 
-    iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
-    accuracy_class = intersection_meter.sum / (target_meter.sum + 1e-10)
-    mIoU = np.mean(iou_class)
-    mAcc = np.mean(accuracy_class)
-    allAcc = sum(intersection_meter.sum) / (sum(target_meter.sum) + 1e-10)
+            output = output.max(1)[1]
+            intersection, union, target = intersectionAndUnionGPU(output, target, args.classes, args.ignore_label)
+            if args.multiprocessing_distributed:
+                dist.all_reduce(intersection), dist.all_reduce(union), dist.all_reduce(target)
+            intersection, union, target = intersection.cpu().numpy(), union.cpu().numpy(), target.cpu().numpy()
+            intersection_meter.update(intersection), union_meter.update(union), target_meter.update(target)
+            accuracy = sum(intersection_meter.val) / (sum(target_meter.val) + 1e-10)
+            batch_time.update(time.time() - end)
+            end = time.time()
 
-    if main_process():
-        logger.info('Val result: mIoU/mAcc/allAcc/top1/top5 {:.4f}/{:.4f}/{:.4f}/{:.4f}/{:.4f}.'.format(mIoU, mAcc, allAcc, top1_meter.avg, top5_meter.avg))
-        for i in range(args.classes):
-            logger.info('Class_{} Result: iou/accuracy {:.4f}/{:.4f}.'.format(i, iou_class[i], accuracy_class[i]))
-        logger.info('<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<')
-    return loss_meter.avg, mIoU, mAcc, allAcc, top1_meter.avg, top5_meter.avg
+            if ((i + 1) % args.print_freq == 0) and main_process():
+                logger.info('Test: [{}/{}] '
+                            'Data {data_time.val:.3f} ({data_time.avg:.3f}) '
+                            'Batch {batch_time.val:.3f} ({batch_time.avg:.3f}) '
+                            'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '
+                            'Accuracy {accuracy:.4f} '
+                            'Acc@1 {top1.val:.3f} ({top1.avg:.3f}) '
+                            'Acc@5 {top5.val:.3f} ({top5.avg:.3f}).'.format(i + 1, len(val_loader),
+                                                                            data_time=data_time,
+                                                                            batch_time=batch_time,
+                                                                            loss_meter=loss_meter,
+                                                                            accuracy=accuracy,
+                                                                            top1=top1_meter,
+                                                                            top5=top5_meter))
+
+        iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
+        accuracy_class = intersection_meter.sum / (target_meter.sum + 1e-10)
+        mIoU = np.mean(iou_class)
+        mAcc = np.mean(accuracy_class)
+        allAcc = sum(intersection_meter.sum) / (sum(target_meter.sum) + 1e-10)
+
+        if main_process():
+            logger.info('Val result: mIoU/mAcc/allAcc/top1/top5 {:.4f}/{:.4f}/{:.4f}/{:.4f}/{:.4f}.'.format(mIoU, mAcc, allAcc, top1_meter.avg, top5_meter.avg))
+            for i in range(args.classes):
+                logger.info('Class_{} Result: iou/accuracy {:.4f}/{:.4f}.'.format(i, iou_class[i], accuracy_class[i]))
+            logger.info('<<<<<<<<<<<<<<<<< End Evaluation <<<<<<<<<<<<<<<<<')
+        return loss_meter.avg, mIoU, mAcc, allAcc, top1_meter.avg, top5_meter.avg
 
 
 if __name__ == '__main__':
